@@ -467,8 +467,8 @@ template <typename T> struct PtrMatrix : BaseMatrix<T, PtrMatrix<T>> {
     T *mem;
     const size_t M, N, X;
 
-    PtrMatrix(T *mem, size_t M, size_t N, size_t X)
-        : mem(mem), M(M), N(N), X(X){};
+    // PtrMatrix(T *mem, size_t M, size_t N, size_t X)
+    //     : mem(mem), M(M), N(N), X(X){};
 
     inline T &getLinearElement(size_t i) { return mem[i]; }
     inline const T &getLinearElement(size_t i) const { return mem[i]; }
@@ -505,6 +505,26 @@ template <typename T> struct PtrMatrix : BaseMatrix<T, PtrMatrix<T>> {
         }
         assert(k == A.nonZeros.size());
         return *this;
+    }
+    PtrMatrix<T> view(size_t rowStart, size_t rowEnd, size_t colStart,
+                      size_t colEnd) {
+        assert(rowEnd > rowStart);
+        assert(colEnd > colStart);
+        return PtrMatrix<T>(mem + colStart + rowStart * X, rowEnd - rowStart,
+                            colEnd - colStart, X);
+    }
+    PtrMatrix<T> view(size_t rowEnd, size_t colEnd) {
+        return view(0, rowEnd, 0, colEnd);
+    }
+    PtrMatrix<T> view(size_t rowStart, size_t rowEnd, size_t colStart,
+                      size_t colEnd) const {
+        assert(rowEnd > rowStart);
+        assert(colEnd > colStart);
+        return PtrMatrix<T>(mem + colStart + rowStart * X, rowEnd - rowStart,
+                            colEnd - colStart, X);
+    }
+    PtrMatrix<T> view(size_t rowEnd, size_t colEnd) const {
+        return view(0, rowEnd, 0, colEnd);
     }
 };
 
@@ -680,9 +700,11 @@ struct Matrix<T, 0, 0, S> : BaseMatrix<T, Matrix<T, 0, 0, S>> {
     Matrix(const SquareMatrix<T> &A)
         : mem(A.mem.begin(), A.mem.end()), M(A.M), N(A.M), X(A.M){};
 
-    operator PtrMatrix<T>() { return PtrMatrix<T>(mem.data(), M, N, X); }
     operator PtrMatrix<const T>() const {
         return PtrMatrix<const T>(mem.data(), M, N, X);
+    }
+    operator PtrMatrix<T>() {
+        return PtrMatrix<T>{.mem = mem.data(), .M = M, .N = N, .X = X};
     }
 
     inline T &getLinearElement(size_t i) { return mem[i]; }
@@ -719,8 +741,7 @@ struct Matrix<T, 0, 0, S> : BaseMatrix<T, Matrix<T, 0, 0, S>> {
         M = N = X = 0;
         mem.clear();
     }
-    void resize(size_t MM, size_t NN) {
-        size_t XX = NN > X ? NN : X;
+    void resize(size_t MM, size_t NN, size_t XX) {
         mem.resize(MM * XX);
         if (NN > X) {
             for (size_t m = 1; m < std::min(M, MM); ++m) {
@@ -736,11 +757,24 @@ struct Matrix<T, 0, 0, S> : BaseMatrix<T, Matrix<T, 0, 0, S>> {
         M = MM;
         N = NN;
     }
+    void resize(size_t MM, size_t NN) {
+        size_t XX = NN > X ? NN : X;
+        resize(MM, NN, XX);
+    }
     void reserve(size_t MM, size_t NN) { mem.reserve(MM * std::max(X, NN)); }
+    void resizeForOverwrite(size_t MM, size_t NN, size_t XX) {
+        assert(XX >= NN);
+        M = MM;
+        N = NN;
+        X = XX;
+        if (M * X > mem.size())
+            mem.resize_for_overwrite(M * X);
+    }
     void resizeForOverwrite(size_t MM, size_t NN) {
         M = MM;
         X = N = NN;
-        mem.resize_for_overwrite(M * N);
+        if (M * X > mem.size())
+            mem.resize_for_overwrite(M * X);
     }
 
     void resizeRows(size_t MM) {
@@ -806,6 +840,19 @@ struct Matrix<T, 0, 0, S> : BaseMatrix<T, Matrix<T, 0, 0, S>> {
         return PtrMatrix<T>(mem.data() + colStart + rowStart * X,
                             rowEnd - rowStart, colEnd - colStart, X);
     }
+    PtrMatrix<T> view(size_t rowEnd, size_t colEnd) {
+        return view(0, rowEnd, 0, colEnd);
+    }
+    PtrMatrix<T> view(size_t rowStart, size_t rowEnd, size_t colStart,
+                      size_t colEnd) const {
+        assert(rowEnd > rowStart);
+        assert(colEnd > colStart);
+        return PtrMatrix<T>(mem.data() + colStart + rowStart * X,
+                            rowEnd - rowStart, colEnd - colStart, X);
+    }
+    PtrMatrix<T> view(size_t rowEnd, size_t colEnd) const {
+        return view(0, rowEnd, 0, colEnd);
+    }
 
     PtrMatrix<T> operator=(PtrMatrix<T> A) {
         assert(M == A.numRow());
@@ -847,12 +894,14 @@ std::ostream &printVector(std::ostream &os, const llvm::SmallVectorImpl<T> &a) {
 }
 
 // template <typename T, size_t L>
-// std::ostream &operator<<(std::ostream &os, llvm::PtrVector<T, L> const &A) {
+// std::ostream &operator<<(std::ostream &os, llvm::PtrVector<T, L> const
+// &A) {
 //     return printVector(os, A);
 // }
 template <typename T, size_t M, size_t N, size_t L>
 std::ostream &operator<<(std::ostream &os, Matrix<T, M, N, L> const &A) {
-    // std::ostream &operator<<(std::ostream &os, Matrix<T, M, N> const &A) {
+    // std::ostream &operator<<(std::ostream &os, Matrix<T, M, N> const &A)
+    // {
     return printMatrix(os, A);
 }
 template <typename T>
